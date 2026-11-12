@@ -1,99 +1,113 @@
 # UR5 VR Teleoperation
 
-基于 VR 手柄的 UR5 机械臂遥操作与数据采集代码。
+VR-controller teleoperation for a UR5 robot arm, with data collection and LeRobot export.
 
-输入层（VR 头显/手柄）→ 主机 Python 进程 → UR RTDE 目标位姿 → 机器人端 URScript `servoj` 执行；
-支持遥操作、episode 数据采集、回 home、LeRobot 格式导出。
+`VR headset/controllers → host Python process → UR RTDE target pose → robot-side URScript servoj`
 
-## 硬件选型
+[English](README.md) | [中文](README.zh.md)
 
-| 部件 | 选型 |
+## Hardware selection
+
+| Component | Selection |
 |---|---|
-| 机械臂 | Universal Robots **UR5**（CB3 / PolyScope 3.x 已验证；e-Series 兼容写法） |
-| 相机 | 2 路 USB RGB 相机（1280×720 @30 fps）：一路全局、一路腕部 |
-| 夹爪 | 大寰 **PGH-300-60** 平行夹爪（Modbus RTU / RS485） |
-| 开发板 | NVIDIA **AGX Orin 64GB**（Ubuntu 20.04 / JetPack 5.1） |
+| Robot arm | Universal Robots **UR5** (CB3 / PolyScope 3.x validated; e-Series compatible) |
+| VR headset | **PICO 4 Ultra** (controllers) via XRoboToolkit PC Service |
+| Cameras | 2× USB RGB cameras (1280×720 @30 fps): one global view, one wrist view |
+| Gripper | Dahua **PGH-300-60** parallel jaw gripper (Modbus RTU / RS485) |
+| Board | NVIDIA **AGX Orin 64GB** (Ubuntu 20.04 / JetPack 5.1) |
 
-其余环境（IP、工作空间、相机设备号、串口）都在 `config/ur5.toml` 里按现场配置，代码不写死。
+Everything else (IPs, workspace, camera device nodes, serial ports) is configured per site in
+`config/ur5.toml`; the code does not hard-code it.
 
-## 目录
+## Repository layout
 
 ```
-ur5_teleop/          核心库：RTDE 客户端、遥操作状态机、相机、夹爪、安全、采集
-urscript/            机器人端程序：ur5_teleop.script（servoj 跟随）、ur5_traj.script（关节轨迹回放）
-tools/               命令行工具：run_teleop、teleop_supervisor、ur_ctl、status、servo_check、export_lerobot ...
-pico_bridge/         VR 输入层：XRoboToolkit PC Service + probe.py（UDP JSON 转发）
-config/ur5.toml      示例配置（按现场修改）
-tests/               单元测试（纯 Python，无需机器人）
-docs/                设计、安全、数据导出说明
-vendor/              UR 官方 RTDE Python 客户端（BSD-3-Clause）
+ur5_teleop/          core library: RTDE client, teleop state machine, cameras, gripper, safety, collector
+urscript/            robot-side programs: ur5_teleop.script (servoj tracking), ur5_traj.script (joint-trajectory replay)
+tools/               CLI tools: run_teleop, teleop_supervisor, ur_ctl, status, servo_check, export_lerobot ...
+pico_bridge/         VR input layer: XRoboToolkit PC Service + probe.py (UDP JSON forwarding)
+config/ur5.toml      example configuration (edit per site)
+tests/               unit tests (pure Python, no robot required)
+docs/                design, safety, dataset export notes
+vendor/              Universal Robots official RTDE Python client (BSD-3-Clause)
 ```
 
-## 安装
+## Installation (Miniconda recommended)
 
-需要 Python ≥ 3.11。
+Python ≥ 3.11 is required. **Miniconda (or an equivalent conda distribution) is strongly recommended**
+so the teleoperation stack runs in an isolated environment:
+
+```bash
+conda create -n ur5-teleop python=3.11 -y
+conda activate ur5-teleop
+pip install -r requirements.txt
+cp config/ur5.toml config/ur5.local.toml   # edit per site; do not commit local config
+```
+
+<details>
+<summary>Alternative: plain venv</summary>
 
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
-cp config/ur5.toml config/ur5.local.toml   # 按现场修改；不建议提交本地配置
 ```
+</details>
 
-## 配置要点
+## Configuration
 
-`config/ur5.local.toml`：
+`config/ur5.local.toml`:
 
-- `[robot] ip`：控制柜 IP
-- `[safety] workspace_min/max`：**必须按现场实际工作空间改窄**，否则失去软件保护意义
-- `[gripper] port`：USB-RS485 设备（Linux `/dev/ttyUSB0`，macOS `/dev/cu.usbserial-XXXX`）
-- `[collect] camera_indices`：0=全局相机，1=腕部相机（OpenCV 索引/设备路径按现场改）
-- `[teleop] scale/rot_scale`：平移倍率与旋转灵敏度
+- `[robot] ip`: controller IP
+- `[safety] workspace_min/max`: **must be narrowed to the real workspace**, otherwise the software guard is meaningless
+- `[gripper] port`: USB-RS485 adapter (Linux `/dev/ttyUSB0`, macOS `/dev/cu.usbserial-XXXX`)
+- `[collect] camera_indices`: 0=global camera, 1=wrist camera (adjust to the site's OpenCV indices)
+- `[teleop] scale/rot_scale`: translation scale and rotation sensitivity
 
-## 快速开始
+## Quick start
 
-1. **启动 VR 输入层**（见 `pico_bridge/README.md`）：官方 XRoboToolkit PC Service + `probe.py`
-   - `probe.py` 默认向 `UDP 9121` 发送手柄数据
-2. **下发机器人程序**（首次/回 home 后）：
+1. **Start the VR input layer** (see `pico_bridge/README.md`): official XRoboToolkit PC Service + `probe.py`
+   - `probe.py` sends controller frames to `UDP 9121` by default
+2. **Load the robot-side program** (first run/after homing):
    ```bash
    python tools/ur_ctl.py --ip <ROBOT_IP> send-program --file urscript/ur5_teleop.script
    ```
-3. **启动遥操作**：
+3. **Start teleoperation**:
    ```bash
    python tools/run_teleop.py --config config/ur5.local.toml
    ```
-   - 按住 grip 进入跟随（离合式，松开即停）
-   - 扳机控制夹爪开合
-4. **采集数据**（可选）：
+   - Hold grip to engage (clutch style; release to stop)
+   - Trigger controls the gripper
+4. **Collect episodes** (optional):
    ```bash
    python tools/teleop_supervisor.py --config config/ur5.local.toml
    ```
-   - B 键开始/保存 episode，右摇杆按下标记人工扰动窗口
-   - 数据在 `data/episodes/<时间戳>_epNNN/`
+   - `B` starts/saves an episode; press the right stick to mark human-intervention windows
+   - Data goes to `data/episodes/<timestamp>_epNNN/`
 
-## 安全
+## Safety
 
-上真机前务必：
+Before running on the real robot:
 
-1. 先跑 `python tools/status.py --ip <ROBOT_IP>` 确认安全状态/运行模式
-2. 用 `tools/servo_check.py` 做 0 mm / 小步长伺服验证
-3. 工作空间盒按现场改小；关节限位、步长限幅、接触保护都在机器人端脚本里
-4. 保持急停按钮可达；出现保护停时按控制器提示解锁
+1. `python tools/status.py --ip <ROBOT_IP>`: verify safety state / robot mode
+2. `tools/servo_check.py`: 0 mm / small-step servo verification
+3. Narrow the workspace box; joint limits, step clamps and contact guards live in the robot-side script
+4. Keep the e-stop within reach; unlock protective stops following controller prompts
 
-详见 `docs/safety.md`。
+See `docs/safety.md` for details.
 
-## 测试
+## Tests
 
 ```bash
-python -m unittest discover -s tests   # 213 项，纯 Python，无需机器人
+python -m unittest discover -s tests   # 213 tests, pure Python, no robot required
 ```
 
-## 数据导出
+## Dataset export
 
-采集结果可用 `tools/export_lerobot.py` 导出为 LeRobot v2.1 数据集（双相机 + state/action），
-用 `tools/check_dataset.py` 校验；详见 `docs/lerobot-export.md`。
+`tools/export_lerobot.py` converts collected episodes into a LeRobot v2.1 dataset
+(two cameras + state/action); `tools/check_dataset.py` validates it. See `docs/lerobot-export.md`.
 
 ## License
 
-MIT（见 `LICENSE`）。`vendor/RTDE_Python_Client_Library` 为 Universal Robots 官方 RTDE Python 客户端，
-BSD-3-Clause（见其 `RTDE_LICENSE`）。
+MIT (see `LICENSE`). `vendor/RTDE_Python_Client_Library` is the official Universal Robots RTDE
+Python client, BSD-3-Clause (see its `RTDE_LICENSE`).

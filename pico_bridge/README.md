@@ -1,6 +1,6 @@
-# VR 输入层：XRoboToolkit PC Service + `probe.py`
+# VR 输入层（PICO 4 Ultra）：XRoboToolkit PC Service + `probe.py`
 
-把 VR 头显与两只手柄的 6DoF 位姿/按键，通过 UDP JSON 转发给本机的 `ur5_teleop`。
+把 PICO 4 Ultra 头显与两只手柄的 6DoF 位姿/按键，通过 UDP JSON 转发给本机的 `ur5_teleop`。
 本层只负责"采集输入 + 转发"，不连接 UR 控制柜、不发送机械臂指令。
 
 ## 组成
