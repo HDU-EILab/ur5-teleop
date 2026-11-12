@@ -46,7 +46,7 @@ pico_bridge/probe.py  ──UDP JSON:9121──►  ur5_teleop（主机）
 ## 5. 轨迹回放（可选）
 
 `tools/play_trajectory.py` + `urscript/ur5_traj.script`：把离线关节轨迹按标称周期流式写给机器人端
-`servoj`，用于复现固定动作；数据格式见 `cvpr-部署UR5/` 内的 manifest/校验文件。
+`servoj`，用于复现固定动作；数据格式见 `trajectory_data/` 内的 manifest/校验文件。
 
 ## 6. 模块清单
 

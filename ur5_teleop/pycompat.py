@@ -68,7 +68,7 @@ def ensure_supported_python() -> None:
         raise RuntimeError(
             f"当前 Python {sys.version.split()[0]} 低于 3.11（缺少 tomllib），"
             "自动切换后仍不满足要求。请显式用 Python ≥3.11 运行，"
-            "例如 PYTHON=~/.local/bin/python3 ./scripts/play_cvpr_trajectory.sh")
+            "例如 PYTHON=/usr/bin/python3.11 python3 tools/run_teleop.py")
     script = sys.argv[0] if sys.argv and os.path.isfile(sys.argv[0]) else ""
     if not script:
         raise RuntimeError(
@@ -86,4 +86,4 @@ def ensure_supported_python() -> None:
     raise RuntimeError(
         f"当前 Python {sys.version.split()[0]} 低于 3.11（缺少 tomllib），"
         "且本机没找到 ≥3.11 的解释器。请安装 Python 3.11+ 或用 "
-        "PYTHON=/path/to/python3 ./scripts/play_cvpr_trajectory.sh 指定。")
+        "PYTHON=/path/to/python3 python3 tools/run_teleop.py 指定。")

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""在真机上复现离线关节轨迹（cvpr-部署UR5 数据包）。
+"""在真机上复现离线关节轨迹（trajectory_data 数据包）。
 
 数据：q_command_rad.npy（6859×6，rad，125 Hz）+ t_command_s.npy，总时长 54.864 s。
 动作：从 UR5 home 姿出发、慢速小范围关节运动（TCP 路径约 31 cm，最大 TCP 速度 1.07 cm/s）。
@@ -66,8 +66,8 @@ from ur5_teleop.ur_client import (  # noqa: E402
     send_program,
 )
 
-#: cvpr-部署UR5 数据包（q_command_rad.npy + t_command_s.npy）
-DEFAULT_FOLDER = ROOT / "cvpr-部署UR5"
+#: trajectory_data 数据包（q_command_rad.npy + t_command_s.npy）
+DEFAULT_FOLDER = ROOT / "trajectory_data"
 #: 机器人端关节轨迹播放程序
 DEFAULT_SCRIPT = ROOT / "urscript" / "ur5_traj.script"
 
@@ -211,7 +211,7 @@ class Trajectory:
 
 
 def load_trajectory(folder: str | Path = DEFAULT_FOLDER) -> Trajectory:
-    """读取并校验 cvpr-部署UR5 数据包；任何结构/限位/速度异常都抛 TrajectoryError。"""
+    """读取并校验 trajectory_data 数据包；任何结构/限位/速度异常都抛 TrajectoryError。"""
     folder = Path(folder)
     q_path = folder / "q_command_rad.npy"
     t_path = folder / "t_command_s.npy"
@@ -844,7 +844,7 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         index += 1
     argv = merged
     parser = argparse.ArgumentParser(
-        description="在真机上复现 cvpr-部署UR5 离线关节轨迹",
+        description="在真机上复现 trajectory_data 离线关节轨迹",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=__doc__)
     parser.add_argument("--config", default=None, help="配置文件，默认 config/ur5.toml")

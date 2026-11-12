@@ -1,7 +1,7 @@
 """离线关节轨迹部署测试（不需要机器人）。
 
 覆盖：
-1. cvpr-部署UR5 数据包结构与校验规则（行数、周期、起始位姿、速度上限、SHA256）
+1. trajectory_data 数据包结构与校验规则（行数、周期、起始位姿、速度上限、SHA256）
 2. 播放器流程：movej 起始位姿 → 125 Hz 关节流式发送；安全/跟踪误差/未跟随 三种中止
 3. 数据损坏场景（时间网格、关节限位、速度、哈希）必须被拒绝
 
@@ -48,7 +48,7 @@ HOME = (0.0, -math.pi / 2, math.pi / 2, -math.pi / 2, -math.pi / 2, 0.0)
 
 
 class TrajectoryDataTest(unittest.TestCase):
-    """真实数据包：cvpr-部署UR5/。"""
+    """真实数据包：trajectory_data/。"""
 
     @classmethod
     def setUpClass(cls) -> None:

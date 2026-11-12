@@ -1,7 +1,7 @@
 # UR5 离线关节轨迹播放 —— 机器人端程序（URScript，CB3 / e-Series 兼容写法）
 #
 # 作用：主机（macOS）按标称 125 Hz 把关节目标写进 RTDE 输入寄存器，机器人端逐周期 servoj。
-# 数据来源：cvpr-部署UR5/q_command_rad.npy（6859×6 rad、55 s 慢速轨迹），见 docs/trajectory-deploy.md
+# 数据来源：trajectory_data/q_command_rad.npy（6859×6 rad、55 s 慢速轨迹），见 docs/trajectory-deploy.md
 #
 # 寄存器契约（与 ur5_teleop/ur_client.py 一致）：
 #   input_double_register_0..5 = 目标关节角 [q1..q6]（rad），cmd=2/3 时有效
