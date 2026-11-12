@@ -6,7 +6,7 @@ __pycache__/
 # 本地配置/数据
 config/*.local.toml
 config/ur5.local.toml
-data/
+/data/
 *.log
 .DS_Store
 
