@@ -137,12 +137,12 @@ class HeadingBasisTest(FrameMathTestCase):
             ((0.0, 0.0, -1.0), (-1.0, 0.0, 0.0), (0.0, 1.0, 0.0)))
 
     def test_controller_along_head_forward_maps_to_robot_plus_x(self):
-        # PICO 头显前方是本地 -Z：手柄往前移动（PICO 世界 -Z）→ 机器人 +X
+        # VR 头显前方是本地 -Z：手柄往前移动（VR 世界 -Z）→ 机器人 +X
         delta = frames.robot_delta((0.0, 0.0, -1.0), (0.0, 0.0, 0.0), IDENTITY_QUAT)
         self.assert_vector_almost(delta, (1.0, 0.0, 0.0))
 
     def test_controller_right_maps_to_robot_minus_y(self):
-        # PICO +X 是右方 → UR 基座 +Y 是左方
+        # VR +X 是右方 → UR 基座 +Y 是左方
         delta = frames.robot_delta((1.0, 0.0, 0.0), (0.0, 0.0, 0.0), IDENTITY_QUAT)
         self.assert_vector_almost(delta, (0.0, -1.0, 0.0))
 
@@ -152,7 +152,7 @@ class HeadingBasisTest(FrameMathTestCase):
 
     def test_head_yaw_90_keeps_forward_mapping(self):
         head = quat_about((0.0, 1.0, 0.0), math.pi / 2)
-        # 头显转向后其前方在 PICO 世界是 -X；沿该方向移动仍映射到机器人 +X
+        # 头显转向后其前方在 VR 世界是 -X；沿该方向移动仍映射到机器人 +X
         delta = frames.robot_delta((-1.0, 0.0, 0.0), (0.0, 0.0, 0.0), head)
         self.assert_vector_almost(delta, (1.0, 0.0, 0.0))
 
@@ -192,7 +192,7 @@ class RobotRotationTest(FrameMathTestCase):
         self.assert_matrix_almost(rotation, frames.rot_z(0.3))
 
     def test_pico_pitch_maps_to_robot_negative_axis(self):
-        # PICO +X（右）在基座系是 -Y，绕 PICO +X 转正角 → 绕基座 -Y 转
+        # VR +X（右）在基座系是 -Y，绕 VR +X 转正角 → 绕基座 -Y 转
         current = quat_about((1.0, 0.0, 0.0), 0.3)
         rotation = frames.robot_rotation(current, IDENTITY_QUAT, IDENTITY_QUAT)
         self.assert_matrix_almost(rotation, rot_y(-0.3))
@@ -201,8 +201,8 @@ class RobotRotationTest(FrameMathTestCase):
         head = quat_about((0.0, 1.0, 0.0), math.pi / 2)
         current = quat_about((0.0, 1.0, 0.0), 0.2)
         rotation = frames.robot_rotation(current, IDENTITY_QUAT, head)
-        # 头显转 90° 后，手柄绕自己固有的 +Y（此时是 PICO -X）转，
-        # 但 heading basis 已把 PICO 世界轴统一映射：仍是基座 +Z 转 0.2
+        # 头显转 90° 后，手柄绕自己固有的 +Y（此时是 VR -X）转，
+        # 但 heading basis 已把 VR 世界轴统一映射：仍是基座 +Z 转 0.2
         self.assert_matrix_almost(rotation, frames.rot_z(0.2))
 
 

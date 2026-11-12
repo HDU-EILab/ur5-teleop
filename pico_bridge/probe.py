@@ -1,4 +1,4 @@
-"""Read real PICO controller data only; never send robot commands."""
+"""Read real VR controller data only; never send robot commands."""
 
 import json
 import math
@@ -69,7 +69,7 @@ def main():
     xrt.init()
     last_stamp = 0
     last_print = 0.0
-    print("Waiting for real PICO tracking frames", flush=True)
+    print("Waiting for VR tracking frames", flush=True)
     try:
         while True:
             stamp = int(xrt.get_time_stamp_ns())
