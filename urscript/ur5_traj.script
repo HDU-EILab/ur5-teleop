@@ -1,0 +1,85 @@
+# UR5 离线关节轨迹播放 —— 机器人端程序（URScript，CB3 / e-Series 兼容写法）
+#
+# 作用：主机（macOS）按标称 125 Hz 把关节目标写进 RTDE 输入寄存器，机器人端逐周期 servoj。
+# 数据来源：cvpr-部署UR5/q_command_rad.npy（6859×6 rad、55 s 慢速轨迹），见 docs/trajectory-deploy.md
+#
+# 寄存器契约（与 ur5_teleop/ur_client.py 一致）：
+#   input_double_register_0..5 = 目标关节角 [q1..q6]（rad），cmd=2/3 时有效
+#   input_int_register_0       = 心跳计数器（主机每帧 +1；停止变化 >0.5 s → 程序 halt）
+#   input_int_register_1       = 命令字：0=idle，2=关节伺服（servoj），3=movej 到寄存器关节角
+#
+# 不用 rtde_set_watchdog：CB3 3.15.8 实测看门狗触发会变成 C207A0 保护性停止（需手动解锁），
+# 这里改为程序内自检心跳，超时 textmsg + halt，主机断流/崩溃时机器人停止推进。
+#
+# 兼容性（2026-11-08 真机实测的写法约束）：只允许单个顶层 def；helper 必须嵌套；
+# 用 while 代替 for；不用 abs()/max()/min()；textmsg 单字符串；servoj 用 6 参数形式。
+#
+# 启动方式：主机 tools/play_trajectory.py 通过 30001 下发（下发后立即关闭脚本通道，程序继续运行）。
+# 注意：本文件**故意不在末尾调用 ur5_traj()**，脚本端口会把整个 def 函数体直接当程序运行。
+
+def ur5_traj():
+  # ======================== 常量 ========================
+  CTRL_PERIOD = 0.008        # 控制周期 s：CB3 125 Hz
+  LOOKAHEAD_TIME = 0.16      # servoj lookahead_time，官方范围 [0.03, 0.2]
+  SERVO_GAIN = 200           # servoj gain，官方范围 [100, 2000]；轨迹平滑，200 足够
+  HB_TIMEOUT_CYCLES = 63     # 心跳停止变化超过 63 周期（0.504 s）→ halt
+  MOVE_ACCEL = 0.25          # movej 加速度 rad/s^2（去起始位姿用，故意放慢）
+  MOVE_VELOCITY = 0.15       # movej 速度 rad/s
+
+  textmsg("UR5 traj: program started, idle until cmd=2/3")
+  hb_last = read_input_integer_register(0)
+  hb_still = 0
+  armed = False      # 收到第一条非 idle 命令后才启用"心跳丢失停机"，避免主机连 RTDE 前的启动竞态
+  move_done = False
+
+  while True:
+    # ---- 心跳自检（替代 RTDE 看门狗，避免 C207A0 保护停）----
+    hb = read_input_integer_register(0)
+    if hb != hb_last:
+      hb_last = hb
+      hb_still = 0
+    else:
+      hb_still = hb_still + 1
+    end
+    cmd = read_input_integer_register(1)
+    if cmd != 0:
+      armed = True
+    end
+    if armed == True and hb_still > HB_TIMEOUT_CYCLES:
+      textmsg("UR5 traj: host heartbeat lost, halting")
+      halt
+    end
+
+    if cmd == 3:
+      # 一次性 movej 到起始位姿；move_done 防止同一条命令被重复执行
+      if move_done == False:
+        q0 = read_input_float_register(0)
+        q1 = read_input_float_register(1)
+        q2 = read_input_float_register(2)
+        q3 = read_input_float_register(3)
+        q4 = read_input_float_register(4)
+        q5 = read_input_float_register(5)
+        textmsg("UR5 traj: moving to start pose")
+        movej([q0, q1, q2, q3, q4, q5], a=MOVE_ACCEL, v=MOVE_VELOCITY)
+        textmsg("UR5 traj: start pose reached")
+      end
+      move_done = True
+      sync()
+
+    elif cmd == 2:
+      move_done = False
+      q0 = read_input_float_register(0)
+      q1 = read_input_float_register(1)
+      q2 = read_input_float_register(2)
+      q3 = read_input_float_register(3)
+      q4 = read_input_float_register(4)
+      q5 = read_input_float_register(5)
+      servoj([q0, q1, q2, q3, q4, q5], 0, 0, CTRL_PERIOD, LOOKAHEAD_TIME, SERVO_GAIN)
+
+    else:
+      # idle：保持当前位置，不推进
+      move_done = False
+      sync()
+    end
+  end
+end

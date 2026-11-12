@@ -1,0 +1,194 @@
+# UR5 PICO 遥操作 —— 机器人端伺服程序（URScript，CB3 / e-Series 兼容写法）
+#
+# 作用：以 125 Hz（可调）在机器人端闭环，从 RTDE 输入寄存器读目标 TCP 位姿，
+#       做增量限幅 + 反向运动学 + servoj；主机（macOS）只负责发"最新目标"。
+#
+# 依据：docs/research/ur5-external-control.md §2.2（官方 servoj + get_inverse_kin 模板）、
+#       §5.2（三层看门狗）；docs/design.md §3.3
+#
+# 寄存器契约（不可单方面修改，需与 ur5_teleop/ur_client.py 一致）：
+#   input_double_register_0..5 = 目标 TCP 位姿 [x,y,z,rx,ry,rz]（基座系，m / rad 轴角）
+#   input_int_register_0       = 心跳计数器（主机每帧 +1）
+#   input_int_register_1       = 命令字：0 = idle（保持），1 = servo（跟随目标）
+#
+# 启动方式（推荐 A）：
+#   A) 主机下发（脚本端口）：python3 tools/ur_ctl.py --ip <IP> send-program --file urscript/ur5_teleop.script --port 30001
+#      注意：脚本端口会把「整个 def 的函数体」直接当作程序运行，因此本文件**故意不在末尾调用**
+#      ur5_teleop()，只保留一个顶层函数定义。
+#   B) 示教器 Program Editor：新建 Script 节点，粘贴本文件内容，**并在末尾补一行 ur5_teleop()**，再播放。
+#
+# 兼容性（2026-11-08 在 UR5 / CB3 / PolyScope 3.15.8 上实测）：
+#   * **必须只有单个顶层函数定义**，helper 函数要嵌套在它里面；"多个顶层 def + 末尾调用"会被控制器
+#     接受启动但立即终止（本项目踩过的坑）。
+#   * CB3 3.15 的 URScript **不支持 for 循环 / abs() / max()**；下面用 while 与手写取绝对值替代。
+#   * textmsg 在 CB3 上最多稳妥传 2 个参数，下面只用单字符串。
+#   * 支持：servoj / get_inverse_kin / read_input_*_register / rtde_set_watchdog / sqrt / p[...]（实测通过）。
+#
+# 行为：
+#   * 程序启动后 idle 空转；**第一次收到 servo 命令（cmd=1）才挂 watchdog**，避免别的 RTDE 客户端
+#     （如 status.py）连一下又断开就误停程序；主机断流/崩溃 → 看门狗停程序。
+#   * cmd=0 时 idle 保持，不推进；cmd=1 时跟随目标。
+#   * 每周期目标位置/姿态增量限幅，关节跳变 (>0.10 rad) 丢弃本帧。
+#   * 目标与实测偏差超阈值持续 0.3 s → 停止推进（idle）并 textmsg（详见 Log）。
+#
+# 常量在下方 ur5_teleop() 内，按现场调整（都是局部变量，不是全局常量）。
+
+def ur5_teleop():
+  # ======================== 常量（按世代/现场调整） ========================
+  CTRL_PERIOD = 0.008        # 控制周期 s：CB3 用 0.008(125 Hz)；e-Series 先 0.008 稳定后再试 0.002-0.004
+                             # 注意：降 CTRL_PERIOD 必须同步降 MAX_POS_STEP（速度 = 步长/周期）
+  LOOKAHEAD_TIME = 0.12      # servoj lookahead_time，官方范围 [0.03, 0.2]；0.12 兼顾跟手与路径偏差（C153 保护停后回调）
+  SERVO_GAIN = 300           # servoj gain，官方范围 [100, 2000]；300 降低跟随误差（C153 保护停后回调）
+  MAX_POS_STEP = 0.020       # 单周期最大位移 m（2026-11-11 用户要求提速：12→20 mm）
+  MAX_ROT_STEP = 0.15        # 单周期最大转角 rad（12→15）
+  DEV_POS_MAX = 0.50         # 目标-实测位置偏差阈值 m
+  DEV_ROT_MAX = 1.67         # 目标-实测姿态偏差阈值 rad（≈96°）
+  DEV_HOLD_CYCLES = 125       # 偏差持续周期数：1.0 s / 0.008
+  # 接触/顶住保护：只有"实测几乎不动但指令还在走"才判定被挡住（避免快动作时误停）。
+  # 偏大本身不暂停：快动作时目标领先是正常的，继续按 MAX_POS_STEP 限幅推进即可。
+  DEV_CONTACT_POS = 0.06      # 目标-实测位置偏差阈值 m
+  DEV_CONTACT_ROT = 0.35      # 姿态偏差 rad
+  DEV_MOVE_MIN = 0.0008       # 单周期实测位移小于该值视为"没在动"（≈0.1 m/s @125Hz）
+  DEV_STILL_CYCLES = 12       # "偏差大且实测不动"持续周期数：0.096 s
+  JOINT_JUMP_MAX = 1.00      # 单周期关节跳变阈值 rad，超限丢弃本帧（2026-11-09 现场要求放宽到 1 rad）
+  WATCHDOG_MIN_HZ = 10       # 心跳最低频率；主机断流超过 1/10 s → 停程序
+  USE_WATCHDOG = False       # CB3 3.15.8 实测：RTDE 看门狗一旦触发会变成 C207A0 保护性停止（需手动解锁），
+                             # 对遥操作伤害大于收益，默认关闭；e-Series 上可改 True。主机侧故障时由
+                             # tools/teleop_supervisor.py 显式 dashboard stop 停程序。
+
+  # ======================== 嵌套 helper ========================
+  # 目标位姿按单周期增量限幅（防止 PICO 断帧/重连造成的位姿跳变被 servoj 照做）
+  # 用相对位姿做限幅：旋转向量在 ±π 附近有两个等价表示，逐分量线性相减会误判成
+  # 巨幅跳变（表现为"动作幅度太大/拒绝执行"）。改为 pose_trans 求真实相对位姿。
+  def _clamp_step(cur_p, target_p, max_pos, max_rot):
+    rel = pose_trans(pose_inv(cur_p), target_p)
+    dpos = sqrt(rel[0]*rel[0] + rel[1]*rel[1] + rel[2]*rel[2])
+    drot = sqrt(rel[3]*rel[3] + rel[4]*rel[4] + rel[5]*rel[5])
+    sp = 1.0
+    if dpos > max_pos:
+      sp = max_pos / dpos
+    end
+    sr = 1.0
+    if drot > max_rot:
+      sr = max_rot / drot
+    end
+    if sp < 1.0 or sr < 1.0:
+      rel2 = p[rel[0]*sp, rel[1]*sp, rel[2]*sp, rel[3]*sr, rel[4]*sr, rel[5]*sr]
+      return pose_trans(cur_p, rel2)
+    end
+    return target_p
+  end
+
+  # 最大关节增量（用于跳变判定）；CB3 没有 for/abs，用 while 与手写绝对值
+  def _max_joint_delta(q_a, q_b):
+    m = 0.0
+    i = 0
+    while i < 6:
+      d = q_a[i] - q_b[i]
+      if d < 0.0:
+        d = -d
+      end
+      if d > m:
+        m = d
+      end
+      i = i + 1
+    end
+    return m
+  end
+
+  # ======================== 主循环 ========================
+  textmsg("UR5 teleop: servo program started, idle until cmd=1")
+  q_now = get_actual_joint_positions()
+  prev_cur = get_actual_tcp_pose()
+  dev_cycles = 0
+  still_cycles = 0
+  armed = False
+
+  while True:
+    cmd = read_input_integer_register(1)
+
+    if cmd == 1:
+      if armed == False:
+        # 第一次真正进入 servo 才挂 watchdog：避免别的 RTDE 客户端短连一下就把程序停掉
+        if USE_WATCHDOG:
+          # 心跳中断 → 停程序（主机崩溃/拔网线时机器人停止推进）
+          rtde_set_watchdog("input_int_register_0", WATCHDOG_MIN_HZ, "stop")
+        end
+        armed = True
+        textmsg("UR5 teleop: servo armed, watchdog on")
+      end
+
+      tx = read_input_float_register(0)
+      ty = read_input_float_register(1)
+      tz = read_input_float_register(2)
+      trx = read_input_float_register(3)
+      tr_y = read_input_float_register(4)
+      trz = read_input_float_register(5)
+      target = p[tx, ty, tz, trx, tr_y, trz]
+      cur = get_actual_tcp_pose()
+
+      # 偏差看门狗：通信正常但动作错（IK 换支、坐标映射错、手柄跳变）时停推进；
+      # 用相对位姿算偏差，避免 ±π 旋转向量分支差异被误判成"偏差巨大"
+      rel = pose_trans(pose_inv(cur), target)
+      dev_pos = sqrt(rel[0]*rel[0] + rel[1]*rel[1] + rel[2]*rel[2])
+      dev_rot = sqrt(rel[3]*rel[3] + rel[4]*rel[4] + rel[5]*rel[5])
+
+      # 实测单周期位移：区分"快动作目标领先（正常）"和"真被物体挡住（不动）"
+      moved_x = cur[0] - prev_cur[0]
+      moved_y = cur[1] - prev_cur[1]
+      moved_z = cur[2] - prev_cur[2]
+      moved = sqrt(moved_x*moved_x + moved_y*moved_y + moved_z*moved_z)
+      prev_cur = cur
+
+      blocked = False
+      if dev_pos > DEV_CONTACT_POS or dev_rot > DEV_CONTACT_ROT:
+        if moved < DEV_MOVE_MIN:
+          still_cycles = still_cycles + 1
+        else:
+          still_cycles = 0
+        end
+        if still_cycles > DEV_STILL_CYCLES:
+          blocked = True
+        end
+      else:
+        still_cycles = 0
+      end
+
+      if blocked:
+        # 确认真被挡住：暂停推进并保持实际位置，避免继续压入触发 C153 保护停
+        textmsg("UR5 teleop: blocked, holding")
+        q_now = get_actual_joint_positions()
+        sync()
+      else:
+        if dev_pos > DEV_POS_MAX or dev_rot > DEV_ROT_MAX:
+          dev_cycles = dev_cycles + 1
+          if dev_cycles > DEV_HOLD_CYCLES:
+            textmsg("UR5 teleop: target deviation too large, holding")
+            q_now = get_actual_joint_positions()
+            dev_cycles = 0
+          end
+          sync()
+        else:
+          dev_cycles = 0
+          limited = _clamp_step(cur, target, MAX_POS_STEP, MAX_ROT_STEP)
+          q_target = get_inverse_kin(limited, q_now)
+          if _max_joint_delta(q_target, q_now) > JOINT_JUMP_MAX:
+            textmsg("UR5 teleop: joint jump rejected")
+            sync()
+          else:
+            q_now = q_target
+            servoj(q_now, 0, 0, CTRL_PERIOD, LOOKAHEAD_TIME, SERVO_GAIN)
+          end
+        end
+      end
+
+    else:
+      # idle：保持当前位置，不推进
+      q_now = get_actual_joint_positions()
+      prev_cur = get_actual_tcp_pose()
+      dev_cycles = 0
+      still_cycles = 0
+      sync()
+    end
+  end
+end

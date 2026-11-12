@@ -1,0 +1,63 @@
+{
+  "original_duration_s": 6.633197594621795,
+  "original_path": {
+    "passed": true,
+    "checks": {
+      "TCP_position": true,
+      "TCP_orientation": true,
+      "clearance": true,
+      "joint_limits": true,
+      "initial": true
+    },
+    "max_tcp_m": 0.005005943100844848,
+    "max_tcp_rad": 0.0500005000000001,
+    "min_clearance_m": 0.01088026847150917,
+    "max_joint_violation_rad": 0.0,
+    "worst_times_s": [
+      4.927020785506478,
+      6.319682165332031,
+      6.163128473743086
+    ],
+    "worst_clearance_pair": "base_link_inertia:geom1--upper_arm_link:geom3",
+    "samples": 48641,
+    "collision_pairs": 21,
+    "seconds": 11.254261542111635
+  },
+  "IK_calls": 0,
+  "NLP_calls": 0,
+  "QP_calls": 0,
+  "status": "OFFLINE_PASS_PENDING_FIELD_BINDING",
+  "final": {
+    "passed": true,
+    "checks": {
+      "TCP_position": true,
+      "TCP_orientation": true,
+      "clearance": true,
+      "joint_limits": true,
+      "initial": true
+    },
+    "max_tcp_m": 0.005005943100844848,
+    "max_tcp_rad": 0.050000500015444475,
+    "min_clearance_m": 0.01088026847150917,
+    "max_joint_violation_rad": 0.0,
+    "worst_times_s": [
+      40.752,
+      52.27,
+      50.976
+    ],
+    "worst_clearance_pair": "base_link_inertia:geom1--upper_arm_link:geom3",
+    "samples": 74997,
+    "collision_pairs": 21,
+    "seconds": 16.405146043747663
+  },
+  "beta_required": 8.117560254626559,
+  "beta": 8.271124026892219,
+  "ticks_per_nominal_frame": 18,
+  "command_duration_s": 54.864000000000004,
+  "command_rows": 6859,
+  "reconstruction_max_joint_difference_rad": 4.440892098500626e-16,
+  "max_velocity_rad_s": 0.021616388739479905,
+  "max_discrete_acceleration_rad_s2": 2.94430124427041,
+  "max_step_rad": 0.000172931109915897,
+  "endpoint_rest": "zero exterior velocities included in discrete acceleration check; PL has velocity jumps at knots"
+}

@@ -1,0 +1,68 @@
+# UR5 VR 遥操作示例配置
+# 复制为 config/ur5.toml 后按现场修改；字段含义见 ur5_teleop/config.py。
+
+[robot]
+ip = "192.168.1.100"        # 控制柜 IP（按现场修改）
+protocol_version = 2
+rtde_frequency_hz = 125.0   # CB3 上限 125；e-Series 可到 500
+
+[input]
+udp_port = 9121             # pico_bridge/probe.py 的 UDP 输出端口
+side = "right"              # right / left
+grip_threshold = 0.8
+grip_release_threshold = 0.6
+grip_release_debounce_s = 0.0
+grip_reengage_debounce_s = 0.25
+frame_timeout_s = 0.6
+
+[teleop]
+scale = 1.8                 # 平移倍率（手柄 1 cm → 机器人 1.8 cm）
+rot_scale = 0.7             # 旋转灵敏度（1.0 = 原始）
+mount_yaw_deg = 180.0       # 操作者朝向在基座系中的偏航角（按现场标定）
+max_pos_step_m = 0.012
+max_rot_step_rad = 0.067
+
+[safety]
+# 基座系工作空间盒（m）：上真机前必须按现场改成更小的安全范围
+workspace_min = [-0.8, -0.8, 0.0]
+workspace_max = [0.8, 0.8, 1.2]
+deviation_pos_m = 0.50
+deviation_rot_rad = 1.67
+deviation_hold_s = 0.6
+comm_timeout_s = 0.25
+
+[gripper]
+enabled = true
+port = "/dev/ttyUSB0"       # USB-RS485 适配器；macOS 形如 /dev/cu.usbserial-XXXX
+baud = 115200
+slave_id = 1
+speed = 100                 # 0-100 %
+force = 20                  # 20-100 %
+stroke_mm = 60
+trigger_side = "right"
+invert_trigger = false
+trigger_mode = "binary"     # binary=扳机过半闭合；analog=连续行程
+release_debounce_s = 1.0
+rate_hz = 40
+
+[recording]
+enabled = true
+dir = "data/sessions"
+flush_every = 50
+
+[home]
+mode = "movej"              # movej（推荐）| servo
+joints_deg = [-180.0, -90.0, -90.0, -90.0, 90.0, -90.0]
+lift_m = 0.15
+speed_mps = 0.04
+countdown_s = 3.0
+
+[collect]
+dir = "data/episodes"
+task_en = "Put the red cylinder and the blue cube into the storage box. Leave all other objects outside the box."
+task_zh = "将红色圆柱和蓝色方块放入收纳盒，其他无关物体留在盒外。"
+camera_backend = "opencv"   # opencv | camcap（macOS）
+camera_indices = [0, 1]     # 0=global, 1=wrist
+camera_width = 1280
+camera_height = 720
+camera_fps = 30.0

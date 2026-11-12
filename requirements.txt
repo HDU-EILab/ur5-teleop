@@ -1,0 +1,10 @@
+numpy>=1.24
+opencv-python>=4.8
+pyserial>=3.5
+
+# 可选：数据导出/校验（tools/export_lerobot.py、tools/check_dataset.py）
+pandas>=2.0
+pyarrow>=14.0
+
+# Python < 3.11 时读取 TOML（pycompat 会优先 re-exec 到 3.11+）
+tomli>=2.0; python_version < "3.11"

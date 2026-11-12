@@ -1,0 +1,58 @@
+{
+  "status": "OFFLINE_PASS_PENDING_FIELD_BINDING",
+  "joint_order": [
+    "shoulder_pan_joint",
+    "shoulder_lift_joint",
+    "elbow_joint",
+    "wrist_1_joint",
+    "wrist_2_joint",
+    "wrist_3_joint"
+  ],
+  "model": {
+    "name": "UR5_CB_nominal",
+    "calibrated_to_physical_robot": false,
+    "TCP": "nominal tool0, zero additional tool offset; no verified physical tool",
+    "tool_payload": null,
+    "firmware": null,
+    "base_to_lab": null,
+    "geometry_scope": "UR5 collision STL convex-hull representation in MuJoCo plus nominal infinite table plane; adjacent links and fixed mounting contact excluded; no gripper/cable/tool collider",
+    "registry_sha256": "9d2db97165944c1c4660cd535cb2411359fe75a7a7610cedea30114e86e4efd8"
+  },
+  "angle_unit": "rad",
+  "time_unit": "s",
+  "assumed_period_s": 0.008,
+  "command_reconstruction": "piecewise linear",
+  "command_duration_s": 54.864000000000004,
+  "hardware_execution_allowed": false,
+  "field_binding": null,
+  "files": {
+    "q_waypoints_96_rad.npy": {
+      "file_sha256": "89a17772aaf7cf3a4b394f5631c8830a8e90f5d2f77463e7d5d7bad9fdccb5e0",
+      "shape": [
+        96,
+        6
+      ]
+    },
+    "t_waypoints_s.npy": {
+      "file_sha256": "2ea3978cdb49168b75e9bea1b49890ac2a292144f637212418e9f7072c56439d",
+      "shape": [
+        96
+      ]
+    },
+    "q_command_rad.npy": {
+      "file_sha256": "853ebdba11c64215f71ff492b1d7080a486e011b350c0412b94577e774fb4c83",
+      "shape": [
+        6859,
+        6
+      ]
+    },
+    "t_command_s.npy": {
+      "file_sha256": "190fa89e2db33859fb33dceb7c952ba82aeb6ac7b5d78f076e962fa1266aa304",
+      "shape": [
+        6859
+      ]
+    }
+  },
+  "protocol_sha256": "4f5813901b7e3424075b0f96502e7260b6a154d4d2a5797465537286a01dc79a",
+  "validation_sha256": "5403540a24b592d1926b147157a976e354605b62a6ffcdbf0bc245511199b76f"
+}

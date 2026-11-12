@@ -1,0 +1,14 @@
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+# 本地配置/数据
+config/*.local.toml
+config/ur5.local.toml
+data/
+*.log
+.DS_Store
+
+# 第三方 SDK（PICO/VR 侧自行安装）
+pico_bridge/vendor/
