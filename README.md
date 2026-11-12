@@ -85,6 +85,22 @@ pip install -r requirements.txt
    - `B` starts/saves an episode; press the right stick to mark human-intervention windows
    - Data goes to `data/episodes/<timestamp>_epNNN/`
 
+## VR controller mapping
+
+| Input | Action |
+|---|---|
+| **Grip** (side set by `input.side`, default right) | Clutch: hold to engage tracking; release to stop immediately (the robot holds its last target) |
+| **Trigger** (side set by `gripper.trigger_side`, default right) | Gripper: in `binary` mode, pull past half → close; release → open (open is debounced by `gripper.release_debounce_s`, default 1 s, to survive packet drops). In `analog` mode the trigger travel maps continuously to jaw position |
+| **B** (short press) | Episode recording: not recording → start an episode; while recording (only when the robot is idle, i.e. grip released) → save the episode, then a 3 s countdown starts and the arm auto-homes; press **B** again during the countdown to cancel homing |
+| **Right stick click** | Mark a human-intervention window while recording: first press = start, second press = end (robot must be idle) |
+| A / X / Y / Menu | Unused |
+
+Notes:
+
+- **Releasing the grip is the immediate stop**; the robot keeps its current pose (no motion resume until grip is held again).
+- `B` is ignored while the robot is still moving: release the grip first, then save.
+- After saving, the arm auto-homes with a robot-side `movej`; the episode is already saved even if homing fails.
+
 ## Safety
 
 Before running on the real robot:

@@ -17,6 +17,8 @@
 
 ## 关键约定
 
+按键语义（grip/trigger/B/右摇杆）见根目录 `README.md` / `README.zh.md`。
+
 - 输出端口：`UDP 9121`（与 `config/ur5.example.toml` 的 `input.udp_port` 一致）
 - 帧格式（JSON）：
   ```json
