@@ -14,7 +14,7 @@ from ur5_teleop.recording_retraction import discard_last_recording  # noqa: E402
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--config", type=Path, default=ROOT / "config/ur5-orin.toml")
+    parser.add_argument("--config", type=Path, default=ROOT / "config/ur5.toml")
     args = parser.parse_args()
     config = load(args.config).collect
     if config.format != "lerobot":

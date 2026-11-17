@@ -13,5 +13,3 @@ config/ur5.local.toml
 # 第三方 SDK（PICO/VR 侧自行安装）
 pico_bridge/vendor/
 
-# 离线轨迹数据包（本地存放，不入库）
-/trajectory_data/

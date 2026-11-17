@@ -33,7 +33,7 @@ DASHBOARD_PORT = 29999
 
 # 命令字（input_int_register_1）
 #   0 = idle，1 = TCP 位姿伺服（ur5_teleop.script 遥操作）
-#   2 = 关节伺服，3 = movej 到寄存器给定关节角（ur5_traj.script 离线轨迹播放）
+#   2 = 关节伺服，3 = movej 到寄存器给定关节角（机器人端脚本需支持这两个命令字）
 CMD_IDLE = 0
 CMD_SERVO = 1
 CMD_JOINT_SERVO = 2
@@ -242,12 +242,12 @@ class RTDEBackend:
         """关节模式写一帧：6 个目标关节角（rad）。
 
         与 send_sets 共用 input_double_register_0..5，靠命令字区分：
-        cmd=2 关节伺服 / cmd=0 idle（urscript/ur5_traj.script）。
+        cmd=2 关节伺服 / cmd=0 idle（机器人端脚本需支持命令字 2）。
         """
         self._write_input(_as_six(joints6), CMD_JOINT_SERVO if servo else CMD_IDLE)
 
     def send_move_to_start(self, joints6: Sequence[float]) -> None:
-        """cmd=3：请求 ur5_traj.script 用 movej 走到这 6 个关节角（低速、阻塞）。"""
+        """cmd=3：请求机器人端脚本用 movej 走到这 6 个关节角（低速、阻塞；需脚本支持）。"""
         self._write_input(_as_six(joints6), CMD_MOVE_START)
 
     def close(self) -> None:

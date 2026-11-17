@@ -4,7 +4,7 @@
 一般用配套脚本：tools/go_home.sh（自动停/启 teleop）。
 
 单独使用：
-    ~/ur5/.venv/bin/python tools/go_home.py --config config/ur5-orin.toml
+    python3 tools/go_home.py --config config/ur5.toml
     ~/ur5/.venv/bin/python tools/go_home.py --dry-run
 """
 from __future__ import annotations
@@ -25,7 +25,7 @@ from ur5_teleop.ur_client import DashboardClient, RTDEBackend  # noqa: E402
 
 def main() -> int:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--config", default=str(ROOT / "config" / "ur5-orin.toml"))
+    ap.add_argument("--config", default=str(ROOT / "config" / "ur5.toml"))
     ap.add_argument("--port", type=int, default=30001)
     ap.add_argument("--dry-run", action="store_true")
     args = ap.parse_args()

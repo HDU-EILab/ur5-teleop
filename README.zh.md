@@ -22,7 +22,7 @@
 
 ```
 ur5_teleop/          核心库：RTDE 客户端、遥操作状态机、相机、夹爪、安全、采集
-urscript/            机器人端程序：ur5_teleop.script（servoj 跟随）、ur5_traj.script（关节轨迹回放）
+urscript/            机器人端程序：ur5_teleop.script（servoj 跟随）
 tools/               命令行工具：run_teleop、teleop_supervisor、ur_ctl、status、servo_check、export_lerobot ...
 pico_bridge/         VR 输入层：XRoboToolkit PC Service + probe.py（UDP JSON 转发）
 config/ur5.toml      示例配置（按现场修改）

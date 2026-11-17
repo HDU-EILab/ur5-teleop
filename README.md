@@ -23,7 +23,7 @@ Everything else (IPs, workspace, camera device nodes, serial ports) is configure
 
 ```
 ur5_teleop/          core library: RTDE client, teleop state machine, cameras, gripper, safety, collector
-urscript/            robot-side programs: ur5_teleop.script (servoj tracking), ur5_traj.script (joint-trajectory replay)
+urscript/            robot-side programs: ur5_teleop.script (servoj tracking)
 tools/               CLI tools: run_teleop, teleop_supervisor, ur_ctl, status, servo_check, export_lerobot ...
 pico_bridge/         VR input layer: XRoboToolkit PC Service + probe.py (UDP JSON forwarding)
 config/ur5.toml      example configuration (edit per site)

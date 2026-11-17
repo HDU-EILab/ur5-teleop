@@ -31,7 +31,7 @@
 1. 拍急停/保护停 → 停止所有主机侧进程（`Ctrl-C` / 停 supervisor）
 2. 控制器解锁（视提示 `unlock protective stop` / 恢复急停按钮）
 3. `tools/status.py` 确认安全状态
-4. 机器人移回安全位置（手动或 `tools/move_home.py`）
+4. 机器人移回安全位置（手动或 `tools/go_home.py`）
 5. 重新下发机器人程序 → 重新开始遥操作
 
 > 本仓库不包含任何现场凭据（SSH/控制柜/URSim 密码等），部署时请自行管理。

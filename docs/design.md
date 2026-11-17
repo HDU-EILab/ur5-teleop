@@ -43,12 +43,7 @@ pico_bridge/probe.py  ──UDP JSON:9121──►  ur5_teleop（主机）
 `ur5_teleop/home.py`：默认 `movej` 到配置的关节 home（比 servoj 弧线更可靠），
 回 home 失败会抛 `HomeError` 并保留当前程序状态。
 
-## 5. 轨迹回放（可选）
-
-`tools/play_trajectory.py` + `urscript/ur5_traj.script`：把离线关节轨迹按标称周期流式写给机器人端
-`servoj`，用于复现固定动作；数据格式与校验方式见 `tools/play_trajectory.py`；离线轨迹数据包不随仓库分发，需本地放入 `trajectory_data/`。
-
-## 6. 模块清单
+## 5. 模块清单
 
 | 模块 | 职责 |
 |---|---|

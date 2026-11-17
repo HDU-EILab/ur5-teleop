@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """快速清理失败 episode 的小工具（纯标准库，可在 AGX 的任意 python3 下运行）。
 
-数据目录默认：~/ur5/data/episodes
+数据目录默认：<仓库根>/data/episodes
 （也可 --root 指定；目录内 *_epNNN 为主数据集，_discarded/ 为已弃用，_extra/ 为额外样本）
 
 常用：
@@ -24,7 +24,7 @@ import sys
 import time
 from pathlib import Path
 
-DEFAULT_ROOT = Path.home() / "ur5" / "data" / "episodes"
+DEFAULT_ROOT = Path(__file__).resolve().parents[1] / "data" / "episodes"
 
 
 def human_size(n: float) -> str:

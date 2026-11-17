@@ -85,7 +85,7 @@ def make_recording(root, name, task="pick", *, success=True, fps=10):
 class CollectFormatTest(unittest.TestCase):
     def test_lerobot_recording_paths_and_format(self):
         settings = CollectConfig(
-            format="lerobot", dir="/data/datasets/live", raw_dir="/data/recordings/ur5"
+            format="lerobot", dir="data/lerobot_live", raw_dir="data/raw_recordings"
         )
         self.assertEqual(settings.format, "lerobot")
         for fields in ({"format": "unknown"}, {"format": "lerobot"}, {"raw_dir": ""}):

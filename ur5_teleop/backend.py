@@ -60,7 +60,7 @@ class URBackend(Protocol):
     def send_joint_sets(self, joints6: Sequence[float], servo: bool = True) -> None:
         """写一帧关节目标（6 个关节角，rad）。
 
-        servo=True 进入关节伺服（ur5_traj.script cmd=2）；False 回 idle。
+        servo=True 进入关节伺服（cmd=2）；False 回 idle。
         与 send_sets 共用同一组寄存器，靠命令字区分模式。
         """
 
