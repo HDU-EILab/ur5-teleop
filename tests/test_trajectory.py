@@ -46,7 +46,12 @@ def write_npy(path: Path, rows: Sequence[float] | Sequence[Sequence[float]]) -> 
 
 HOME = (0.0, -math.pi / 2, math.pi / 2, -math.pi / 2, -math.pi / 2, 0.0)
 
+TRAJECTORY_DATA_AVAILABLE = (pt.DEFAULT_FOLDER / "q_command_rad.npy").is_file()
+_SKIP_NO_DATA = unittest.skipUnless(
+    TRAJECTORY_DATA_AVAILABLE, "trajectory data packet not included in repository")
 
+
+@_SKIP_NO_DATA
 class TrajectoryDataTest(unittest.TestCase):
     """真实数据包：trajectory_data/。"""
 
@@ -99,6 +104,7 @@ class TrajectoryDataTest(unittest.TestCase):
             self.assertEqual(pt._load_npy(path), [(1.0, 2.0), (3.0, 4.0)])
 
 
+@_SKIP_NO_DATA
 class HomeRemapTest(unittest.TestCase):
     """把数据包 home 映射到现场约定 home 的两种方式。"""
 
@@ -189,6 +195,7 @@ class BadDataTest(unittest.TestCase):
             pt.load_trajectory(self.folder)
 
 
+@_SKIP_NO_DATA
 class TcpAlignTest(unittest.TestCase):
     """TCP 刚体变换（不改安装配置）的数学与对齐逻辑。"""
 
@@ -248,6 +255,7 @@ class TcpAlignTest(unittest.TestCase):
         self.assertGreaterEqual(len(servo), 51)
 
 
+@_SKIP_NO_DATA
 class PlayerTest(unittest.TestCase):
     """播放器流程与中止逻辑（虚拟时钟，毫秒级）。"""
 

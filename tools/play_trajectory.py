@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""在真机上复现离线关节轨迹（trajectory_data 数据包）。
+"""在真机上复现离线关节轨迹（trajectory_data 数据包，不随仓库分发）。
 
 数据：q_command_rad.npy（6859×6，rad，125 Hz）+ t_command_s.npy，总时长 54.864 s。
 动作：从 UR5 home 姿出发、慢速小范围关节运动（TCP 路径约 31 cm，最大 TCP 速度 1.07 cm/s）。
