@@ -113,7 +113,7 @@ class GripperConfig:
     """大寰 PGC-300-60 电爪（RS485 / Modbus RTU）。位置 0-1000 = 闭合→全开。"""
 
     enabled: bool = False
-    port: str = "/dev/ttyUSB0"
+    port: str = "/dev/cu.usbserial-BG022E33"
     baud: int = 115200
     slave_id: int = 1
     speed: int = 100                   # 0-100 %
@@ -191,12 +191,14 @@ class CollectConfig:
     """Episode 采集与双相机参数。"""
 
     dir: str = "data/episodes"
+    format: str = "raw"
+    raw_dir: str = "data/episodes"
     task_en: str = ("Put the red cylinder and the blue cube into the storage box. Leave all other objects outside the box.")
     task_zh: str = "将红色圆柱和蓝色方块放入收纳盒，其他无关物体留在盒外。"
-    camera_backend: str = "opencv"           # camcap（原生 AVFoundation）| opencv（UVC）
+    camera_backend: str = "camcap"           # camcap（原生 AVFoundation）| opencv（UVC）
     camcap_app: str = "~/Applications/camcap.app"
-    global_camera_name: str = "global"
-    wrist_camera_name: str = "wrist"
+    global_camera_name: str = "435 with RGB Module"
+    wrist_camera_name: str = "435i"
     camera_indices: tuple[int, int] = (0, 1)
     camera_width: int = 1280
     camera_height: int = 720
@@ -205,6 +207,12 @@ class CollectConfig:
     def __post_init__(self) -> None:
         if not self.dir:
             raise ValueError("collect.dir 不能为空")
+        if self.format not in ("raw", "lerobot"):
+            raise ValueError("collect.format 必须是 raw/lerobot")
+        if not self.raw_dir:
+            raise ValueError("collect.raw_dir 不能为空")
+        if self.format == "lerobot" and self.raw_dir == self.dir:
+            raise ValueError("LeRobot 目录与原始录制目录必须分开")
         if self.camera_backend not in ("camcap", "opencv"):
             raise ValueError(f"collect.camera_backend 必须是 camcap/opencv，收到 {self.camera_backend!r}")
         if len(self.camera_indices) != 2:

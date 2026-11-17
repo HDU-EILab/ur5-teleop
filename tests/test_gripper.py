@@ -33,7 +33,11 @@ class FakeTransport:
     def read(self, size: int) -> bytes:
         if not self.responses:
             return b""
-        return self.responses.pop(0)[:size]
+        chunk = self.responses[0][:size]
+        self.responses[0] = self.responses[0][size:]
+        if not self.responses[0]:
+            self.responses.pop(0)
+        return chunk
 
     def close(self) -> None:
         self.closed = True
@@ -84,6 +88,102 @@ class FrameTest(unittest.TestCase):
             build_write(1, 0x0103, [0x10000])
         with self.assertRaises(ValueError):
             build_read(1, 0x0201, 0)
+
+
+class RtuResponseTest(unittest.TestCase):
+    def test_partial_reads_are_assembled(self):
+        frame = status_response(position=630)
+        transport = FakeTransport([frame[:1], frame[1:4], frame[4:]])
+        gripper = Gripper(transport=transport)
+        gripper._read_status()
+        self.assertEqual(gripper.position_raw, 630)
+        self.assertTrue(gripper.healthy)
+
+    def test_garbage_exception_bits_do_not_become_device_exceptions(self):
+        transport = FakeTransport([bytes.fromhex('ffffffffff') + status_response(position=570)])
+        gripper = Gripper(transport=transport)
+        with self.assertLogs('ur5_teleop.gripper', level='WARNING'):
+            gripper._read_status()
+        self.assertEqual(gripper.position_raw, 570)
+        self.assertEqual(gripper.communication_resyncs, 1)
+
+    def test_crc_corruption_can_resynchronize_to_a_complete_valid_frame(self):
+        damaged = bytearray(status_response(position=150))
+        damaged[-1] ^= 1
+        transport = FakeTransport([bytes(damaged) + status_response(position=250)])
+        gripper = Gripper(transport=transport)
+        with self.assertLogs('ur5_teleop.gripper', level='WARNING'):
+            gripper._read_status()
+        self.assertEqual(gripper.position_raw,250)
+        self.assertEqual(len(transport.written),1)
+
+    def test_corrupted_transaction_retries_and_accepts_only_a_valid_frame(self):
+        class RetryTransport(FakeTransport):
+            def write(self, frame):
+                self.written.append(frame)
+                if len(self.written) == 1:
+                    self.responses.append(bytes.fromhex('5fa020414040207ab5d3'))
+                else:
+                    self.responses.append(status_response(position=1000))
+        transport = RetryTransport()
+        gripper = Gripper(transport=transport)
+        gripper._response_timeout_s = .005
+        with self.assertLogs('ur5_teleop.gripper', level='WARNING') as logs:
+            gripper._read_status()
+        self.assertEqual(len(transport.written), 2)
+        self.assertEqual(gripper.communication_retries, 1)
+        self.assertEqual(gripper.position_raw, 1000)
+        self.assertTrue(gripper.healthy)
+        self.assertIn('retry 1/1', logs.output[0])
+
+    def test_repeated_invalid_transactions_fail_without_publishing_a_position(self):
+        transport = FakeTransport()
+        gripper = Gripper(transport=transport)
+        gripper._response_timeout_s = .005
+        with self.assertLogs('ur5_teleop.gripper', level='WARNING'):
+            with self.assertRaisesRegex(GripperError, 'timeout/invalid frame'):
+                gripper._read_status()
+        self.assertEqual(len(transport.written), 2)
+        self.assertIsNone(gripper.position_raw)
+        self.assertFalse(gripper.healthy)
+
+    def test_valid_five_byte_exception_is_reported_with_raw_frame(self):
+        payload = bytes.fromhex('018302')
+        frame = payload + crc16(payload).to_bytes(2,'little')
+        gripper = Gripper(transport=FakeTransport([frame]))
+        with self.assertRaisesRegex(GripperError,'0x02; frame=018302'):
+            gripper._read_status()
+        self.assertEqual(len(gripper._transport.written), 1)
+
+    def test_invalid_exception_crc_is_not_reported_as_a_device_exception(self):
+        gripper = Gripper(transport=FakeTransport([bytes.fromhex('0183ff0000')]))
+        gripper._response_timeout_s = .01
+        with self.assertRaisesRegex(GripperError,'timeout/invalid frame'):
+            gripper._read_status()
+        self.assertIsNone(gripper.position_raw)
+
+    def test_response_from_another_slave_is_not_accepted(self):
+        gripper = Gripper(transport=FakeTransport([status_response(slave_id=2)]))
+        gripper._response_timeout_s = .01
+        with self.assertRaisesRegex(GripperError,'timeout/invalid frame'):
+            gripper._read_status()
+
+    def test_write_echo_must_match_the_requested_register_and_value(self):
+        class WrongEcho(FakeTransport):
+            def write(self,frame):
+                self.written.append(frame)
+                self.responses.append(build_write(1,0x0104,[50]))
+        gripper = Gripper(transport=WrongEcho())
+        with self.assertRaisesRegex(GripperError,'回显不匹配'):
+            gripper._write_register(0x0103,1000)
+
+    def test_frame_gap_is_observed_between_transactions(self):
+        transport = FakeTransport([status_response(),status_response()])
+        gripper = Gripper(transport=transport)
+        gripper._read_status()
+        before = time.monotonic()
+        gripper._read_status()
+        self.assertGreaterEqual(time.monotonic()-before,gripper._frame_gap_s*.8)
 
 
 class GripperControllerTest(unittest.TestCase):

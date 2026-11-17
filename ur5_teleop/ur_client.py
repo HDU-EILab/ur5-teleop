@@ -132,6 +132,7 @@ class RTDEBackend:
         port: int = RTDE_PORT,
         state_timeout_s: float = 0.2,
         keepalive_hz: float = 20.0,
+        read_only: bool = False,
     ) -> None:
         if not ip:
             raise ValueError("ip 不能为空")
@@ -145,6 +146,7 @@ class RTDEBackend:
         self.frequency_hz = float(frequency_hz)
         self.state_timeout_s = float(state_timeout_s)
         self.keepalive_hz = float(keepalive_hz)
+        self.read_only = read_only
 
         self._con: _rtde.RTDE | None = None
         self._input = None
@@ -180,9 +182,10 @@ class RTDEBackend:
                     break
             if not recipe_ok:
                 raise BackendError(f"{self.ip}: RTDE 输出 recipe 配置失败（固件版本过旧？）")
-            self._input = con.send_input_setup(list(INPUT_NAMES), list(INPUT_TYPES))
-            if self._input is None:
-                raise BackendError(f"{self.ip}: RTDE 输入 recipe 配置失败（寄存器被占用？）")
+            if not self.read_only:
+                self._input = con.send_input_setup(list(INPUT_NAMES), list(INPUT_TYPES))
+                if self._input is None:
+                    raise BackendError(f"{self.ip}: RTDE 输入 recipe 配置失败（寄存器被占用？）")
             if not con.send_start():
                 raise BackendError(f"{self.ip}: RTDE 同步启动失败")
         except BackendError:
@@ -209,8 +212,10 @@ class RTDEBackend:
             f"recipe={','.join(self._output_names)}")
         self._threads = [
             threading.Thread(target=self._receive_loop, name="rtde-receive", daemon=True),
-            threading.Thread(target=self._keepalive_loop, name="rtde-keepalive", daemon=True),
         ]
+        if not self.read_only:
+            self._threads.append(threading.Thread(
+                target=self._keepalive_loop, name="rtde-keepalive", daemon=True))
         for thread in self._threads:
             thread.start()
         return self._controller
@@ -273,6 +278,8 @@ class RTDEBackend:
 
     # ------------------------------------------------------------------ 内部
     def _write_input(self, values: tuple[float, ...], command: int) -> None:
+        if self.read_only:
+            raise BackendError("RTDE read_only connection cannot send commands")
         con = self._con
         data = self._input
         if con is None or data is None or not self._connected:

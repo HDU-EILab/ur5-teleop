@@ -187,7 +187,7 @@ def _make_cameras(cfg):
     return CameraSet(indices=tuple(cfg.collect.camera_indices),
                      width=cfg.collect.camera_width,
                      height=cfg.collect.camera_height,
-                     fps=cfg.collect.camera_fps)
+                     fps=cfg.collect.camera_fps, persistent=True)
 
 
 def build_step_callback(cfg, printer, gripper: Gripper | None, collector: Collector):
@@ -301,19 +301,27 @@ def main() -> int:
             gripper = None
 
     collector = Collector(
-        ROOT / cfg.collect.dir,
+        ROOT / (cfg.collect.raw_dir if cfg.collect.format == "lerobot" else cfg.collect.dir),
+        lerobot_dir=ROOT / cfg.collect.dir if cfg.collect.format == "lerobot" else None,
+        fps=cfg.collect.camera_fps,
         task_en=cfg.collect.task_en,
         task_zh=cfg.collect.task_zh,
         cameras=_make_cameras(cfg),
         printer=lambda msg: print(msg, flush=True))
     print(f"[supervisor] 采集目录：{collector.root}", flush=True)
-    print(f"[supervisor] 相机探测：{collector.cameras.probe()}", flush=True)
 
     on_step = build_step_callback(cfg, printer, gripper, collector)
     rounds = 0
     print(f"[supervisor] PICO UDP :{cfg.input.udp_port}，scale={cfg.teleop.scale:g}，"
           f"mount_yaw={cfg.teleop.mount_yaw_deg:g}°，机器人 {cfg.robot.ip}", flush=True)
     try:
+        if cfg.collect.camera_backend == "opencv":
+            collector.cameras.open()
+            status = collector.cameras.wait_ready()
+            print(f"[supervisor] 相机预热：{status}", flush=True)
+            if status["ready"]:
+                print("[camera] 双相机预热完成，按 B 可立即录制", flush=True)
+        print(f"[supervisor] 相机探测：{collector.cameras.probe()}", flush=True)
         while True:
             rounds += 1
             wait_until_safe(cfg.robot.ip)
@@ -394,8 +402,10 @@ def main() -> int:
         if gripper is not None:
             gripper.hold()
             gripper.close()
-        collector.close()
-        source.close()
+        try:
+            collector.close()
+        finally:
+            source.close()
 
 
 if __name__ == "__main__":

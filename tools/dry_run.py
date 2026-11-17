@@ -2,7 +2,7 @@
 
 两种输入（其它行为相同）：
 
-- 默认：实时监听 ``config.input.udp_port`` 的 PICO UDP JSON 帧（同 upstream dry_run），
+- 默认：实时监听 ``config.input.udp_port`` 的 PICO UDP JSON 帧（同 Tianji dry_run），
   Ctrl-C 退出，退出前发一帧 idle；
 - ``--replay FILE``：回放 JSONL 录制（每行一个 ``probe.py`` 格式的帧），逐帧打印后退出。
 

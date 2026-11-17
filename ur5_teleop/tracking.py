@@ -1,7 +1,7 @@
 """PICO UDP JSON 帧解析/校验与帧来源（实时 UDP / JSONL 回放）。
 
-输入协议沿用 upstream ``pico-controller-bridge``：``probe.py`` 每帧发一个 JSON
-（UDP 9121），字段见下；校验规则迁移自 upstream ``dry_run.validated_frame``，
+输入协议沿用 Tianji ``pico-controller-bridge``：``probe.py`` 每帧发一个 JSON
+（UDP 9121），字段见下；校验规则迁移自 Tianji ``dry_run.validated_frame``，
 并补了帧时间戳单调与来源封装：
 
 ```json

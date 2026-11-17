@@ -8,16 +8,18 @@
 3. 目标位置裁进基座系 XYZ 工作空间盒；
 4. 相对上一帧目标做位置/转角步长限幅，防止单帧跳变。
 
-``scale`` 只作用于平移增量（与 upstream 一致），姿态 1:1。
+``scale`` 只作用于平移增量（与 Tianji 一致），姿态 1:1。
 """
 
 from __future__ import annotations
 
 import math
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
 
 from . import frames
-from .config import SafetyConfig, TeleopConfig
+if TYPE_CHECKING:
+    from .config import SafetyConfig, TeleopConfig
 
 Pose6 = tuple[float, float, float, float, float, float]
 

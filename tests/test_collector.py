@@ -4,6 +4,7 @@ import csv
 import json
 import tempfile
 import unittest
+from unittest.mock import Mock, patch
 from pathlib import Path
 
 from ur5_teleop.collector import Collector
@@ -24,6 +25,15 @@ def make_step(buttons=None, servo=False, state=TeleopState.IDLE) -> TeleopStep:
 
 
 class CollectorTest(unittest.TestCase):
+    def setUp(self):
+        cameras = Mock()
+        cameras.start.return_value = {"ok": True}
+        cameras.stop.return_value = {"frames": {"global": 0, "wrist": 0}}
+        cameras.latest.return_value = {}
+        camera_factory = patch("ur5_teleop.collector.CameraSet", return_value=cameras)
+        camera_factory.start()
+        self.addCleanup(camera_factory.stop)
+
     def test_b_starts_and_saves_episode(self):
         with tempfile.TemporaryDirectory() as tmp:
             collector = Collector(tmp, printer=lambda msg: None)
@@ -45,7 +55,8 @@ class CollectorTest(unittest.TestCase):
             self.assertIn("red cylinder", meta["task"])
             self.assertIn("blue cube", meta["task"])
             self.assertGreaterEqual(meta["rows"], 1)
-            self.assertGreaterEqual(len(list(csv.DictReader((directory / "robot.csv").open()))), 1)
+            with (directory / "robot.csv").open() as stream:
+                self.assertGreaterEqual(len(list(csv.DictReader(stream))), 1)
 
     def test_b_ignored_while_moving(self):
         with tempfile.TemporaryDirectory() as tmp:

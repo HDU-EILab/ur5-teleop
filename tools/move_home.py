@@ -11,8 +11,8 @@
 
 用法：
     python3 tools/move_home.py --dry-run          # 只打印路径包络，不连机器人
-    python3 tools/move_home.py --yes              # 实机移动（约 15 s，2 倍速）
-    python3 tools/move_home.py --yes --duration 30   # 恢复原速
+    python3 tools/move_home.py --yes              # 实机移动（约 30 s）
+    python3 tools/move_home.py --yes --duration 45 --max-speed 0.04
 
 安全：移动期间人手不离急停；扫掠圆弧经过的区域必须无人无障碍。
 """
@@ -119,8 +119,7 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         description="沿水平圆弧把 UR5 移回标称 home 姿（不改安装配置）",
         formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--config", default=None)
-    parser.add_argument("--duration", type=float, default=15.0,
-                        help="扫掠时长（s），默认 15（2026-11-11 起 2 倍速；用 30 恢复原速）")
+    parser.add_argument("--duration", type=float, default=30.0, help="扫掠时长（s），默认 30")
     parser.add_argument("--home-joints", default=None,
                         help="自定义 home 关节角（deg，逗号分隔 6 个）；默认现场约定 home")
     parser.add_argument("--max-pos-error", type=float, default=0.05,

@@ -19,7 +19,6 @@
 from __future__ import annotations
 
 import csv
-import json
 import time
 from pathlib import Path
 from typing import Any, Callable
@@ -55,6 +54,7 @@ class Collector:
     def __init__(self, root: str | Path, *,
                  task_en: str = TASK_TEXT_EN, task_zh: str = TASK_TEXT_ZH,
                  cameras: CameraSet | None = None,
+                 lerobot_dir: str | Path | None = None, fps: float = 30.0,
                  printer: Callable[[str], None] = print,
                  clock: Callable[[], float] = time.monotonic,
                  wall_clock: Callable[[], float] = time.time) -> None:
@@ -79,6 +79,11 @@ class Collector:
         self._started_at: float | None = None
         self._camera_status: dict[str, Any] = {}
         self.last_step = None
+        self._lerobot_writer = None
+        if lerobot_dir is not None:
+            from .lerobot_recording import LeRobotRecordingWriter
+            self._lerobot_writer = LeRobotRecordingWriter(lerobot_dir, fps=fps, printer=printer)
+            self._lerobot_writer.recover(self.root)
 
     def _discover_last_episode(self) -> int:
         """续接已有 episode 编号：服务重启后不从 1 重新开始（避免 meta.episode 重复）。"""
@@ -114,7 +119,7 @@ class Collector:
         self.disturbance = []
         self.events = [{"type": "arm", "t": self._clock() if step is None else None}]
         self._rows = 0
-        # 先启动相机（预热），完成后再开始 episode 计时，避免预热时间被算进数据
+        # 常驻相机已在服务启动时预热，这里只附加当前 episode 的写入器。
         self._camera_status = self.cameras.start(directory)
         self._started_at = self._clock()
         if not self._camera_status.get("ok"):
@@ -202,19 +207,33 @@ class Collector:
             "duration_s": None if self._started_at is None else round(ended - self._started_at, 3),
             "rows": self._rows,
             "success": bool(success),
+            "camera_valid": (
+                bool(self._camera_status.get("ok"))
+                and bool(camera_stats.get("ok", True))
+                and not bool(camera_stats.get("errors"))
+                and all(camera_stats.get("frames", {}).get(name, 0) > 0
+                        for name in ("global", "wrist"))
+            ),
             "disturbance_windows": [[a, b] for a, b in self.disturbance],
             "camera": self._camera_status,
             "camera_stats": camera_stats,
             "columns": COLUMNS,
         }
+        if self._lerobot_writer is not None:
+            meta["lerobot_export"] = {
+                "dataset": str(self._lerobot_writer.dataset),
+                "fps": self._lerobot_writer.fps,
+                "cut_margin_s": self._lerobot_writer.cut_margin_s,
+                "min_segment_s": self._lerobot_writer.min_segment_s,
+            }
         if directory is not None:
-            (directory / "meta.json").write_text(
-                json.dumps(meta, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-            (directory / "annotations.json").write_text(
-                json.dumps({"events": self.events, "disturbance_windows":
-                            meta["disturbance_windows"]}, ensure_ascii=False, indent=2) + "\n",
-                encoding="utf-8")
+            from .lerobot_recording import write_json
+            write_json(directory / "annotations.json", {
+                "events": self.events, "disturbance_windows": meta["disturbance_windows"]})
+            write_json(directory / "meta.json", meta)
             self.printer(f"[collect] episode 已保存：{directory}")
+            if self._lerobot_writer is not None:
+                self._lerobot_writer.enqueue(directory)
         self.directory = None
         return directory
 
@@ -240,5 +259,14 @@ class Collector:
         return directory
 
     def close(self) -> None:
-        if self.armed:
-            self.save(success=False)
+        try:
+            if self.armed:
+                self.save(success=False)
+        finally:
+            try:
+                close_cameras = getattr(self.cameras, "close", None)
+                if close_cameras is not None:
+                    close_cameras()
+            finally:
+                if self._lerobot_writer is not None:
+                    self._lerobot_writer.close()

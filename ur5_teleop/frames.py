@@ -3,7 +3,7 @@
 约定（与 docs/design.md §2 一致）：
 
 - 四元数一律为 ``(x, y, z, w)``（OpenXR / PICO 顺序）。
-- 旋转矩阵是 3x3 行优先 tuple-of-tuple（沿用 upstream 项目的纯 stdlib 风格），
+- 旋转矩阵是 3x3 行优先 tuple-of-tuple（沿用 Tianji 项目的纯 stdlib 风格），
   作用方式 ``v_out = R @ v_in``。
 - 旋转向量（轴角）为 ``(rx, ry, rz)``：方向是转轴，模长是转角（rad），
   与 UR ``actual_TCP_pose`` 的旋转表示一致。
@@ -12,7 +12,7 @@
 - ``heading_basis()`` 输出的矩阵 M 满足 ``v_ur = M @ v_pico``，
   即把“操作者前方/左方/上方”旋到 UR 基座系。
 
-映射实现对照 upstream ``pico-controller-bridge/dry_run.py`` 的
+映射实现对照 Tianji ``pico-controller-bridge/dry_run.py`` 的
 ``_heading_basis`` / ``robot_delta`` / ``robot_rotation``，数值语义保持一致，
 额外补了完整四元数/矩阵/轴角互转与 ``mount_yaw_deg`` 装夹偏航补偿。
 所有函数只依赖标准库，出错抛 ``ValueError``。
@@ -226,7 +226,7 @@ def compose_pose(start_pose, delta_xyz, rotation: Matrix3 | None = None) -> Pose
     """目标位姿 = 起始位姿 ⊕ (位移增量, 旋转增量)。
 
     ``delta_xyz`` 是 UR 基座系位移（m），``rotation`` 是基座系旋转增量矩阵，
-    左乘到起始旋转上（与 upstream ``solve_position`` 的语义一致）。
+    左乘到起始旋转上（与 Tianji ``solve_position`` 的语义一致）。
     """
     start = tuple(float(value) for value in start_pose)
     if len(start) != 6:
@@ -248,3 +248,12 @@ def rotation_angle(rotation: Matrix3) -> float:
     """旋转矩阵对应的最小转角（rad，0..pi）。"""
     rx, ry, rz = matrix_to_rotvec(rotation)
     return math.sqrt(rx * rx + ry * ry + rz * rz)
+
+
+def policy_rotvec(rotvec) -> Vector3:
+    """Equivalent positive-Y axis-angle branch used by this task's demonstrations."""
+    rotation = matrix_to_rotvec(rotvec_to_matrix(rotvec))
+    if rotation[1] < 0:
+        angle = math.sqrt(sum(value * value for value in rotation))
+        return tuple(value * (1 - 2 * math.pi / angle) for value in rotation)
+    return rotation

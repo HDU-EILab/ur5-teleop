@@ -6,8 +6,8 @@
 安全：每一步都打印前后位姿；需要显式 --yes 才会发运动指令。
 
 用法：
-    python3 tools/servo_check.py --ip 192.168.1.100 --yes              # 只验证 0 mm servo
-    python3 tools/servo_check.py --ip 192.168.1.100 --yes --step-mm 2  # 再走 2 mm（基座 +Z）
+    python3 tools/servo_check.py --ip 192.168.56.10 --yes              # 只验证 0 mm servo
+    python3 tools/servo_check.py --ip 192.168.56.10 --yes --step-mm 2  # 再走 2 mm（基座 +Z）
 """
 
 from __future__ import annotations
@@ -45,7 +45,7 @@ def dashboard_command(ip: str, cmd: str) -> str:
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__,
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("--ip", default="192.168.1.100")
+    parser.add_argument("--ip", default="192.168.56.10")
     parser.add_argument("--script", type=Path, default=DEFAULT_SCRIPT)
     parser.add_argument("--port", type=int, default=30001)
     parser.add_argument("--step-mm", type=float, default=0.0,

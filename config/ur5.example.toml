@@ -58,11 +58,17 @@ speed_mps = 0.04
 countdown_s = 3.0
 
 [collect]
-dir = "data/episodes"
+# raw: 只保存原始录制；lerobot: 保存后由后台进程自动整理成 LeRobot v2.1 数据集
+format = "raw"                  # raw | lerobot
+dir = "data/episodes"           # raw=录制目录；lerobot=数据集目录（符号链接，自动创建）
+raw_dir = "data/recordings"     # format=lerobot 时的原始录制目录（必须与 dir 不同）
 task_en = "Put the red cylinder and the blue cube into the storage box. Leave all other objects outside the box."
 task_zh = "将红色圆柱和蓝色方块放入收纳盒，其他无关物体留在盒外。"
-camera_backend = "opencv"   # opencv | camcap（macOS）
-camera_indices = [0, 1]     # 0=global, 1=wrist
+camera_backend = "opencv"       # opencv（UVC）| camcap（macOS AVFoundation）
+camcap_app = "~/Applications/camcap.app"
+global_camera_name = "435 with RGB Module"
+wrist_camera_name = "435i"
+camera_indices = [0, 1]         # 0=global, 1=wrist；Linux 也可填 /dev/videoX 或 udev 名
 camera_width = 1280
 camera_height = 720
 camera_fps = 30.0

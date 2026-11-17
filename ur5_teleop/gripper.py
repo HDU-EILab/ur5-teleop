@@ -1,6 +1,6 @@
 """大寰 PGC 系列电爪：RS485 / Modbus RTU 控制 + 状态回读。
 
-现场实测（2026-11-10，PGC-300-60）：串口 ``/dev/ttyUSB0``，
+现场实测（2026-11-10，PGC-300-60）：串口 ``/dev/cu.usbserial-BG022E33``，
 ``115200 8N1``，从站 ``1``；寄存器与 PGE/PGSE 系列一致：
 
 ================  ======  =====================================
@@ -25,7 +25,9 @@
 from __future__ import annotations
 
 import threading
+import logging
 import time
+from types import MappingProxyType
 from typing import Sequence
 
 #: 寄存器地址（16 位，见模块说明）
@@ -36,6 +38,8 @@ REG_ENABLE = 0x0106
 REG_GRIP_STATE = 0x0201
 REG_POSITION = 0x0202
 
+LOG = logging.getLogger(__name__)
+
 POSITION_MIN = 0
 POSITION_MAX = 1000
 
@@ -45,6 +49,10 @@ GRIP_STATE_NAMES = {0: "moving", 1: "arrived", 2: "grasped", 3: "dropped"}
 
 class GripperError(RuntimeError):
     """夹爪通信/协议错误。"""
+
+
+class ModbusResponseError(GripperError):
+    """No complete, CRC-valid response arrived for the transaction."""
 
 
 def crc16(data: bytes) -> int:
@@ -97,14 +105,17 @@ class SerialTransport:
         import serial  # 延迟导入：单测/无夹爪环境不需要 pyserial
 
         self._serial = serial.Serial(port, baudrate=baud, bytesize=8, parity="N",
-                                     stopbits=1, timeout=timeout_s)
+                                     stopbits=1, timeout=timeout_s, exclusive=True)
 
     def write(self, data: bytes) -> None:
         self._serial.write(data)
         self._serial.flush()
 
     def read(self, size: int) -> bytes:
-        return self._serial.read(size)
+        # Block for the first byte only; drain already buffered bytes together.
+        # Waiting for an entire requested frame would delay shorter exception replies.
+        available = self._serial.in_waiting
+        return self._serial.read(min(size, available) if available else 1)
 
     def reset_input_buffer(self) -> None:
         self._serial.reset_input_buffer()
@@ -119,10 +130,10 @@ class Gripper:
     :param transport: 注入自定义传输层（测试用）；为 None 时按 ``port``/``baud`` 打开串口。
     """
 
-    def __init__(self, port: str = "/dev/ttyUSB0", *, baud: int = 115200,
+    def __init__(self, port: str = "/dev/cu.usbserial-BG022E33", *, baud: int = 115200,
                  slave_id: int = 1, speed: int = 100, force: int = 20,
                  rate_hz: float = 40.0, read_hz: float = 10.0,
-                 transport=None) -> None:
+                 transport=None, read_only: bool = False) -> None:
         if not 1 <= slave_id <= 247:
             raise ValueError(f"slave_id 必须在 1..247，收到 {slave_id}")
         self.port = port
@@ -134,16 +145,38 @@ class Gripper:
         self._read_period_s = 1.0 / max(1.0, float(read_hz))
         self._transport = transport
         self._own_transport = transport is None
+        self.read_only = read_only
         self._lock = threading.Lock()
         self._stop = threading.Event()
+        self._hold_requested = threading.Event()
+        self._held = threading.Event()
         self._thread: threading.Thread | None = None
 
         self._target: int | None = None      # 待下发目标（None = 不下发，保持）
+        self._last_delivered: int | None = None
+        # Delivery metadata belongs to the serial I/O owner. It is exposed only
+        # when a subsequent full status read is published, never by relabeling
+        # cached feedback at write time.
+        self._delivery_generation = 0
+        self._delivered_at = 0.0
+        self._feedback_generation = 0
+        self._feedback = MappingProxyType({
+            "target": None, "delivery_generation": 0, "delivered_at": 0.0,
+            "generation": 0, "read_at": 0.0, "state": None, "position": None,
+        })
+        self._motion_status = None
         self.position_raw: int | None = None
         self.grip_state: int | None = None
         self.healthy = False
         self.last_error: str | None = None
+        self.last_read_at = 0.0
         self._next_read = 0.0
+        self._response_timeout_s = 0.1
+        self._last_exchange_end = 0.0
+        # Modbus RTU recommends a fixed 1.75 ms inter-frame gap above 19200 baud.
+        self._frame_gap_s = max(3.5 * 11 / self.baud, 0.00175)
+        self.communication_resyncs = 0
+        self.communication_retries = 0
 
     # -- 生命周期 --
     def connect(self) -> str:
@@ -153,15 +186,19 @@ class Gripper:
         try:
             if self._transport is None:
                 self._transport = SerialTransport(self.port, self.baud)
-            self._write_register(REG_ENABLE, 1)
-            self._write_register(REG_SPEED, self.speed)
-            self._write_register(REG_FORCE, self.force)
+            if not self.read_only:
+                self._write_register(REG_ENABLE, 1)
+                self._write_register(REG_SPEED, self.speed)
+                self._write_register(REG_FORCE, self.force)
             self._read_status()
         except Exception as exc:  # noqa: BLE001 - 统一包装成 GripperError
             self._safe_close_transport()
             raise GripperError(f"夹爪初始化失败：{exc}") from exc
-        self.healthy = True
+        with self._lock:
+            self.healthy = True
         self._stop.clear()
+        self._hold_requested.clear()
+        self._held.clear()
         self._thread = threading.Thread(target=self._run, name="gripper", daemon=True)
         self._thread.start()
         return self._describe()
@@ -173,7 +210,8 @@ class Gripper:
             thread.join(timeout=1.0)
         self._thread = None
         self._safe_close_transport()
-        self.healthy = False
+        with self._lock:
+            self.healthy = False
 
     @property
     def description(self) -> str:
@@ -188,6 +226,8 @@ class Gripper:
     # -- 主循环接口 --
     def set_position(self, position_raw: int) -> None:
         """请求运动到 0..1000 的目标位置；超出范围会被裁剪。"""
+        if self.read_only:
+            raise GripperError("read_only gripper cannot send a position target")
         with self._lock:
             self._target = max(POSITION_MIN, min(POSITION_MAX, int(position_raw)))
 
@@ -196,6 +236,39 @@ class Gripper:
         with self._lock:
             self._target = None
 
+    def motion_complete(self, position_raw: int) -> bool:
+        """Acknowledge command delivery and a subsequent terminal device status."""
+        status = self._motion_status
+        return bool(self.healthy and status is not None and status[0] == position_raw
+                    and status[1] in (1, 2, 3))
+
+    def feedback_snapshot(self) -> dict:
+        """Return coherent feedback without performing I/O.
+
+        All fields except ``healthy`` describe one successful full status read.
+        ``target`` is the target delivered before that read began, not a queued
+        request. ``delivery_generation`` increments after each acknowledged
+        target write (including stop/hold writes); ``generation`` increments
+        after each successful read. Timestamps use ``time.monotonic()``.
+        Current health is included under the same lock so failures and closure
+        invalidate an otherwise unchanged cached record. Caller edits cannot
+        modify the internally immutable record.
+        """
+        with self._lock:
+            return {"healthy": self.healthy, **self._feedback}
+
+    def stop_motion(self, timeout_s: float = 0.5) -> None:
+        """Ask the serial owner to read and hold the current position, then await acknowledgement."""
+        if self.read_only:
+            raise GripperError("read_only gripper cannot stop motion")
+        if self._thread is None or not self._thread.is_alive():
+            raise GripperError("Gripper worker is not running")
+        self.hold()
+        self._held.clear()
+        self._hold_requested.set()
+        if not self._held.wait(timeout_s):
+            raise GripperError(f"Gripper hold was not acknowledged: {self.last_error}")
+
     # -- 内部 --
     def _run(self) -> None:
         next_read = 0.0
@@ -203,51 +276,124 @@ class Gripper:
             with self._lock:
                 target = self._target
             try:
-                if target is not None and target != self._last_delivered:
+                if self._hold_requested.is_set():
+                    self._read_status()
+                    if self.position_raw is None:
+                        raise GripperError("Gripper position is unavailable")
+                    self._write_register(REG_TARGET_POSITION, self.position_raw)
+                    self._hold_requested.clear()
+                    self._held.set()
+                elif target is not None and target != self._last_delivered:
                     self._write_register(REG_TARGET_POSITION, target)
-                    self._last_delivered = target
                 now = time.monotonic()
                 if now >= next_read:
                     self._read_status()
                     next_read = now + self._read_period_s
-                self.healthy = True
-                self.last_error = None
             except Exception as exc:  # noqa: BLE001 - 串口异常不向上抛
-                self.healthy = False
-                if str(exc) != self.last_error:
-                    self.last_error = str(exc)
+                with self._lock:
+                    self.healthy = False
+                    if str(exc) != self.last_error:
+                        self.last_error = str(exc)
             time.sleep(self._period_s)
 
-    _last_delivered: int | None = None
+    def _exchange(self, request: bytes, response_size: int) -> bytes:
+        # Register reads and absolute register writes are idempotent. Retry only
+        # a missing/corrupt response, preserving valid device exceptions.
+        try:
+            return self._exchange_once(request, response_size)
+        except ModbusResponseError as error:
+            self.communication_retries += 1
+            LOG.warning("Modbus RTU retry 1/1 after invalid response: %s", error)
+            return self._exchange_once(request, response_size)
+
+    def _exchange_once(self, request: bytes, response_size: int) -> bytes:
+        """Receive one matching, CRC-verified RTU response across partial USB reads."""
+        time.sleep(max(0.0, self._frame_gap_s - (time.monotonic() - self._last_exchange_end)))
+        self._transport.reset_input_buffer()
+        self._transport.write(request)
+        deadline = time.monotonic() + self._response_timeout_s
+        function = request[1]
+        buffer = bytearray()
+        received = bytearray()
+        discarded = 0
+        try:
+            while time.monotonic() < deadline:
+                chunk = self._transport.read(response_size)
+                if not chunk:
+                    time.sleep(0.001)
+                    continue
+                buffer.extend(chunk)
+                received.extend(chunk)
+                if len(received) > 256:
+                    del received[:-256]
+                while len(buffer) >= 2:
+                    if buffer[0] != self.slave_id or buffer[1] not in (function, function | 0x80):
+                        del buffer[0]
+                        discarded += 1
+                        continue
+                    length = 5 if buffer[1] == function | 0x80 else response_size
+                    if len(buffer) < length:
+                        break
+                    response = bytes(buffer[:length])
+                    if crc16(response[:-2]) != int.from_bytes(response[-2:], 'little'):
+                        del buffer[0]
+                        discarded += 1
+                        continue
+                    if discarded:
+                        self.communication_resyncs += 1
+                        LOG.warning('Modbus RTU resynchronized after %d bytes; rx=%s',
+                                    discarded, received.hex())
+                    if response[1] == function | 0x80:
+                        raise GripperError(f'Modbus 异常响应：0x{response[2]:02X}; frame={response.hex()}')
+                    return response
+            raise ModbusResponseError(f'Modbus RTU response timeout/invalid frame; '
+                               f'function=0x{function:02X}, discarded={discarded}, rx={received.hex()}')
+        finally:
+            self._last_exchange_end = time.monotonic()
 
     def _write_register(self, address: int, value: int) -> None:
         frame = build_write(self.slave_id, address, [value])
-        self._transport.reset_input_buffer()
-        self._transport.write(frame)
-        # Modbus 写寄存器后设备会回显请求（8 字节），必须读掉，否则会打乱后续状态读取
-        echo = self._transport.read(len(frame))
-        if len(echo) < len(frame):
-            raise GripperError(f"写寄存器 0x{address:04X} 无响应（收到 {len(echo)} 字节）")
-        if echo[1] & 0x80:
-            raise GripperError(f"写寄存器 0x{address:04X} 异常响应：0x{echo[2]:02X}")
-        if crc16(echo[:-2]) != int.from_bytes(echo[-2:], "little"):
-            raise GripperError(f"写寄存器 0x{address:04X} 回显 CRC 错误：{echo.hex()}")
+        echo = self._exchange(frame, 8)
+        if echo != frame:
+            raise GripperError(f'写寄存器 0x{address:04X} 回显不匹配：'
+                               f'tx={frame.hex()}, rx={echo.hex()}')
+        if address == REG_TARGET_POSITION:
+            # Only the serial owner reaches here. A queued set_position() and
+            # an unsuccessful write must not claim delivery.
+            self._last_delivered = value
+            self._delivery_generation += 1
+            self._delivered_at = time.monotonic()
 
     def _read_status(self) -> None:
-        frame = build_read(self.slave_id, REG_GRIP_STATE, 2)
-        self._transport.reset_input_buffer()
-        self._transport.write(frame)
-        response = self._transport.read(9)
-        if len(response) < 7:
-            raise GripperError(f"读状态无响应（收到 {len(response)} 字节）")
-        if response[1] & 0x80:
-            raise GripperError(f"Modbus 异常响应：0x{response[2]:02X}")
-        if response[1] != 0x03 or response[2] != 4 or len(response) < 9:
-            raise GripperError(f"读状态响应格式错误：{response.hex()}")
-        if crc16(response[:-2]) != int.from_bytes(response[-2:], "little"):
-            raise GripperError(f"读状态 CRC 错误：{response.hex()}")
-        self.grip_state = int.from_bytes(response[3:5], "big")
-        self.position_raw = int.from_bytes(response[5:7], "big")
+        read_started_at = time.monotonic()
+        target = self._last_delivered
+        delivery_generation = self._delivery_generation
+        delivered_at = self._delivered_at
+        if read_started_at < delivered_at:
+            raise GripperError("Status read started before the delivered command")
+        response = self._exchange(build_read(self.slave_id, REG_GRIP_STATE, 2), 9)
+        if response[2] != 4:
+            raise GripperError(f'读状态响应格式错误：{response.hex()}')
+        state = int.from_bytes(response[3:5], 'big')
+        position = int.from_bytes(response[5:7], 'big')
+        if state not in GRIP_STATE_NAMES or not POSITION_MIN <= position <= POSITION_MAX:
+            raise GripperError(f'读状态寄存器值错误：{response.hex()}')
+        if delivery_generation != self._delivery_generation:
+            raise GripperError("Delivered command changed during a status read")
+        read_at = time.monotonic()
+        with self._lock:
+            self.grip_state = state
+            self.position_raw = position
+            self._motion_status = (target, self.grip_state)
+            self.last_read_at = read_at
+            self.healthy = True
+            self.last_error = None
+            self._feedback_generation += 1
+            self._feedback = MappingProxyType({
+                "target": target, "delivery_generation": delivery_generation,
+                "delivered_at": delivered_at, "generation": self._feedback_generation,
+                "read_at": read_at, "state": state, "position": position,
+            })
 
     def _safe_close_transport(self) -> None:
         transport = self._transport
@@ -259,3 +405,4 @@ class Gripper:
             pass
         if self._own_transport:
             self._transport = None
+
